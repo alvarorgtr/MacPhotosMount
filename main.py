@@ -7,41 +7,33 @@ import logging
 import errno
 import trio
 import pyfuse3
+from pyfuse3 import Operations, FUSEError, ROOT_INODE
 
-# If we are running from the pyfuse3 source directory, try
-# to load the module from there first.
-basedir = os.path.abspath(os.path.join(os.path.dirname(sys.argv[0]), '..'))
-if (os.path.exists(os.path.join(basedir, 'setup.py')) and
-        os.path.exists(os.path.join(basedir, 'src', 'pyfuse3.pyx'))):
-    sys.path.insert(0, os.path.join(basedir, 'src'))
 
-try:
-    import faulthandler
-except ImportError:
-    pass
-else:
-    faulthandler.enable()
+import faulthandler
+
+faulthandler.enable()
 
 log = logging.getLogger(__name__)
 
 
-class TestFs(pyfuse3.Operations):
+class TestFs(Operations):
     def __init__(self):
         super(TestFs, self).__init__()
         self.hello_name = b"message"
-        self.hello_inode = pyfuse3.ROOT_INODE + 1
+        self.hello_inode = ROOT_INODE + 1
         self.hello_data = b"hello world\n"
 
     async def getattr(self, inode, ctx=None):
         entry = pyfuse3.EntryAttributes()
-        if inode == pyfuse3.ROOT_INODE:
+        if inode == ROOT_INODE:
             entry.st_mode = (stat.S_IFDIR | 0o755)
             entry.st_size = 0
         elif inode == self.hello_inode:
             entry.st_mode = (stat.S_IFREG | 0o644)
             entry.st_size = len(self.hello_data)
         else:
-            raise pyfuse3.FUSEError(errno.ENOENT)
+            raise FUSEError(errno.ENOENT)
 
         stamp = int(1438467123.985654 * 1e9)
         entry.st_atime_ns = stamp
@@ -54,17 +46,17 @@ class TestFs(pyfuse3.Operations):
         return entry
 
     async def lookup(self, parent_inode, name, ctx=None):
-        if parent_inode != pyfuse3.ROOT_INODE or name != self.hello_name:
-            raise pyfuse3.FUSEError(errno.ENOENT)
+        if parent_inode != ROOT_INODE or name != self.hello_name:
+            raise FUSEError(errno.ENOENT)
         return self.getattr(self.hello_inode)
 
     async def opendir(self, inode, ctx):
-        if inode != pyfuse3.ROOT_INODE:
-            raise pyfuse3.FUSEError(errno.ENOENT)
+        if inode != ROOT_INODE:
+            raise FUSEError(errno.ENOENT)
         return inode
 
     async def readdir(self, fh, start_id, token):
-        assert fh == pyfuse3.ROOT_INODE
+        assert fh == ROOT_INODE
 
         # only one entry
         if start_id == 0:
@@ -74,9 +66,9 @@ class TestFs(pyfuse3.Operations):
 
     async def open(self, inode, flags, ctx):
         if inode != self.hello_inode:
-            raise pyfuse3.FUSEError(errno.ENOENT)
+            raise FUSEError(errno.ENOENT)
         if flags & os.O_RDWR or flags & os.O_WRONLY:
-            raise pyfuse3.FUSEError(errno.EPERM)
+            raise FUSEError(errno.EPERM)
         return pyfuse3.FileInfo(fh=inode)
 
     async def read(self, fh, off, size):
