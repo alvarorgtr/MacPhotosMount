@@ -84,4 +84,30 @@ In that case, Z_25ALBUMLISTS and Z_26ASSETS are interesting.
 Album lists are defined in ZALBUMLIST.
 Assets look to be defined in ZGENERICASSET.
 It looks like Z_26ASSETS matches albums by their PK IN ZGENERICALBUM with assets by their PK in ZGENERICASSET.
-The main folders seem to have Z_PK = 2 as a parent.
+The main folders seem to have Z_PK = 2 as a parent. Z_ENT = 32 ensures folders and ZKIND = 4000 seems to belong to user-readable folders.
+
+For top-level folders:
+
+```sql
+SELECT *
+FROM ZGENERICALBUM
+WHERE ZPARENTFOLDER = 2 AND Z_ENT = 32 AND ZKIND = 4000;
+```
+
+```sql
+WITH RECURSIVE
+album_hierarchy(pk, level, isleaf) AS
+    (SELECT z_pk, 0, 0 FROM zgenericalbum WHERE z_ent = 32 AND zkind = 3999
+    UNION ALL
+    SELECT z_pk, h.level + 1, CASE WHEN g.z_ent = 26 THEN 1 ELSE 0 END
+    FROM zgenericalbum g JOIN album_hierarchy h ON g.zparentfolder = h.pk
+    WHERE (g.z_ent = 32 AND g.zkind = 4000) OR (g.z_ent = 26 AND g.zkind = 2))
+SELECT z_pk, z_ent, zparentfolder, ztitle, h.level, h.isleaf
+FROM zgenericalbum g JOIN album_hierarchy h ON g.z_pk = h.pk;
+```
+
+- The root folder is the only folder (z_ent = 32) with zkind = 3999.
+- Subfolders (and subsubfolders) are folders (z_ent = 32) with zkind = 4000.
+- Albums are albums (z_ent = 26) with zkind = 2.
+- There are other kinds of albums (with z_ent between 27 and 31) which may be user-created an thus may be useful.
+
