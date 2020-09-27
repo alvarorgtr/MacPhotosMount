@@ -1,5 +1,4 @@
 
-
 def dict_grouping(unique_key_generator, values):
     dict = {}
     for value in values:
@@ -11,3 +10,11 @@ def dict_grouping(unique_key_generator, values):
         dict[key] = value
 
     return dict
+
+
+def first(predicate, iterable):
+    for element in iterable:
+        if predicate(element):
+            return element
+
+    return None

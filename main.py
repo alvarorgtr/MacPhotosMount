@@ -3,66 +3,127 @@ import sys
 
 from argparse import ArgumentParser
 import stat
-import logging
 import errno
 import trio
 import pyfuse3
 from pyfuse3 import Operations, FUSEError, ROOT_INODE
 
-
 import faulthandler
+
+from collection_utils import first
+from library_info import PhotoLibrary
 
 faulthandler.enable()
 
-log = logging.getLogger(__name__)
 
+class PhotoFS(Operations):
+    def __init__(self, library_path):
+        super(PhotoFS, self).__init__()
+        self.photo_library = PhotoLibrary(library_path)
 
-class TestFs(Operations):
-    def __init__(self):
-        super(TestFs, self).__init__()
-        self.hello_name = b"message"
-        self.hello_inode = ROOT_INODE + 1
-        self.hello_data = b"hello world\n"
+    def __assign_inodes(self):
+        self._inode_to_folder = {ROOT_INODE: self.photo_library.root_folder}
+        self._folder_to_inode = {self.photo_library.root_folder: ROOT_INODE}
+        for inode, folder in enumerate(self.photo_library.folders, start=ROOT_INODE + 1):
+            if folder.parent:
+                self._inode_to_folder[inode] = folder
+                self._folder_to_inode[folder] = inode
+
+        self._inode_to_asset = {}
+        self._folder_asset_to_inode = {}
+        inode = ROOT_INODE + len(self.photo_library.folders)
+        for folder in self.photo_library.folders:
+            for asset in folder.assets:
+                self._inode_to_asset[inode] = asset
+                self._folder_asset_to_inode[(folder, asset)] = inode
+                inode += 1
 
     async def getattr(self, inode, ctx=None):
         entry = pyfuse3.EntryAttributes()
-        if inode == ROOT_INODE:
+        if inode in self._inode_to_folder:
+            # For a folder, we create our own stats
             entry.st_mode = (stat.S_IFDIR | 0o755)
-            entry.st_size = 0
-        elif inode == self.hello_inode:
-            entry.st_mode = (stat.S_IFREG | 0o644)
-            entry.st_size = len(self.hello_data)
+            entry.st_size = 0   # Size of directory is system-defined
+
+            # TODO: read times from the database and use them. For now, just use a hardcoded timestamp.
+            stamp = int(1438467123.985654 * 1e9)
+            entry.st_atime_ns = stamp
+            entry.st_ctime_ns = stamp
+            entry.st_mtime_ns = stamp
+
+            entry.st_gid = os.getgid()
+            entry.st_uid = os.getuid()
+            entry.st_ino = inode
+        elif inode in self._inode_to_asset:
+            # This is an asset, we have a file to base all this information on
+            asset = self._inode_to_asset[inode]
+            asset_path = asset.original_path(self.photo_library.path)
+
+            try:
+                old_stat = os.lstat(asset_path)
+            except OSError as exc:
+                raise FUSEError(exc.errno)
+
+            # Select the most restrictive mode between readonly and the original file's
+            entry.st_mode = (stat.S_IFREG | (0o644 & old_stat.st_mode))
+            entry.st_ino = inode
+
+            for attr in ('st_nlink', 'st_uid', 'st_gid', 'st_rdev', 'st_size', 'st_atime_ns', 'st_mtime_ns', 'st_ctime_ns'):
+                setattr(entry, attr, getattr(old_stat, attr))
+
+            entry.generation = 0
+            entry.entry_timeout = 0
+            entry.attr_timeout = 0
+            entry.st_blksize = 512
+            entry.st_blocks = ((entry.st_size + entry.st_blksize - 1) // entry.st_blksize)
         else:
             raise FUSEError(errno.ENOENT)
-
-        stamp = int(1438467123.985654 * 1e9)
-        entry.st_atime_ns = stamp
-        entry.st_ctime_ns = stamp
-        entry.st_mtime_ns = stamp
-        entry.st_gid = os.getgid()
-        entry.st_uid = os.getuid()
-        entry.st_ino = inode
 
         return entry
 
     async def lookup(self, parent_inode, name, ctx=None):
-        if parent_inode != ROOT_INODE or name != self.hello_name:
+        name = os.fsdecode(name)
+        folder = self._inode_to_folder[parent_inode]
+
+        if not folder:
             raise FUSEError(errno.ENOENT)
-        return self.getattr(self.hello_inode)
+
+        subfolder = first(lambda f: f.name == name, folder.children)
+        if subfolder:
+            inode = self._folder_to_inode[subfolder]
+        elif name in folder.named_assets:
+            asset = folder.named_assets[name]
+            inode = self._folder_asset_to_inode[(folder, asset)]
+        else:
+            raise FUSEError(errno.ENOENT)
+
+        return await self.getattr(inode)
 
     async def opendir(self, inode, ctx):
-        if inode != ROOT_INODE:
+        if inode not in self._inode_to_folder:
             raise FUSEError(errno.ENOENT)
+
         return inode
 
-    async def readdir(self, fh, start_id, token):
-        assert fh == ROOT_INODE
+    async def readdir(self, inode, offset, token):
+        folder = self._inode_to_folder[inode]
 
-        # only one entry
-        if start_id == 0:
-            pyfuse3.readdir_reply(
-                token, self.hello_name, await self.getattr(self.hello_inode), 1)
-        return
+        if folder:
+            for i, subfolder in enumerate(folder.children[offset:]):
+                inode = self._folder_to_inode[subfolder]
+                attr = await self.getattr(inode)
+
+                if not pyfuse3.readdir_reply(token, os.fsencode(subfolder.name), attr, i):
+                    return
+
+            offset = max(0, offset - len(folder.children))
+            assets = sorted(folder.named_assets.items(), key=lambda item: item[0])
+            for i, (name, asset) in enumerate(assets, len(folder.children))[offset:]:
+                inode = self._folder_asset_to_inode[(folder, asset)]
+                attr = await self.getattr(inode)
+
+                if not pyfuse3.readdir_reply(token, os.fsencode(name), attr, i):
+                    return
 
     async def open(self, inode, flags, ctx):
         if inode != self.hello_inode:
