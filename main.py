@@ -1,5 +1,7 @@
 import logging
 import os
+import signal
+import sys
 from argparse import ArgumentParser
 import trio
 import pyfuse3
@@ -28,22 +30,23 @@ def parse_args():
 def main():
     options = parse_args()
 
+    # Build the photo library from the file
     library = PhotoLibrary(options.photolibrary)
 
+    # Set the log level depending on the flags
     log_level = 'DEBUG' if options.debug else 'INFO'
     logging.basicConfig(level=os.environ.get('LOGLEVEL', log_level))
 
+    # Setup the logger
     logger = logging.getLogger(__name__)
     logger.info(f'Parsed photo library with {len(library.assets)} unique assets')
 
     logging.info(f'Mounting photo library to {options.mountpoint}...')
 
+    # Create and run the file system
     filesystem = PhotoFS(library)
     fuse_options = set(pyfuse3.default_options)
     fuse_options.add('fsname=PhotoLibrary')
-
-    # if options.debug:
-    #    fuse_options.add('debug')
 
     pyfuse3.init(filesystem, options.mountpoint, fuse_options)
 
