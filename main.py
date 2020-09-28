@@ -1,8 +1,11 @@
+import logging
+import os
 from argparse import ArgumentParser
 import trio
 import pyfuse3
 import faulthandler
 
+from library_info import PhotoLibrary
 from photo_fs import PhotoFS
 
 faulthandler.enable()
@@ -25,7 +28,17 @@ def parse_args():
 def main():
     options = parse_args()
 
-    filesystem = PhotoFS(options.photolibrary)
+    library = PhotoLibrary(options.photolibrary)
+
+    log_level = 'DEBUG' if options.debug else 'INFO'
+    logging.basicConfig(level=os.environ.get('LOGLEVEL', log_level))
+
+    logger = logging.getLogger(__name__)
+    logger.info(f'Parsed photo library with {len(library.assets)} unique assets')
+
+    logging.info(f'Mounting photo library to {options.mountpoint}...')
+
+    filesystem = PhotoFS(library)
     fuse_options = set(pyfuse3.default_options)
     fuse_options.add('fsname=PhotoLibrary')
 
@@ -33,6 +46,8 @@ def main():
         fuse_options.add('debug')
 
     pyfuse3.init(filesystem, options.mountpoint, fuse_options)
+
+    logging.info(f'Mounted!')
 
     try:
         trio.run(pyfuse3.main)

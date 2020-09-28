@@ -95,6 +95,7 @@ class Folder:
         self.level = level
         self.assets = []
         self.named_assets = {}
+        self.sorted_named_assets = []
         self.children = []
         self.creation_epoch = creation_epoch
 
@@ -113,9 +114,11 @@ class Folder:
 
     def name_assets(self):
         for position, asset in enumerate(sorted(self.assets, key=lambda a: a.creation_epoch)):
-            extension = os.path.splitext(asset.file_name)
+            extension = os.path.splitext(asset.file_name)[1]
             filename = f'{position:05}.{extension}'
             self.named_assets[filename] = asset
+
+        self.sorted_named_assets = sorted(self.named_assets.items(), key=lambda item: item[0])
 
     def __repr__(self):
         return f'Folder(id: {self.id}, name: {self.name})'
