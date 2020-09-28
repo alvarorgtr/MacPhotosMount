@@ -1,7 +1,5 @@
 import logging
 import os
-import signal
-import sys
 from argparse import ArgumentParser
 import trio
 import pyfuse3
@@ -14,8 +12,6 @@ faulthandler.enable()
 
 
 def parse_args():
-    """Parse command line"""
-
     parser = ArgumentParser()
 
     parser.add_argument('photolibrary', type=str,
@@ -39,9 +35,9 @@ def main():
 
     # Setup the logger
     logger = logging.getLogger(__name__)
-    logger.info(f'Parsed photo library with {len(library.assets)} unique assets')
+    print(f'Parsed photo library with {len(library.assets)} unique assets')
 
-    logging.info(f'Mounting photo library to {options.mountpoint}...')
+    print(f'Mounting photo library to {options.mountpoint}...')
 
     # Create and run the file system
     filesystem = PhotoFS(library)
@@ -50,7 +46,7 @@ def main():
 
     pyfuse3.init(filesystem, options.mountpoint, fuse_options)
 
-    logging.info(f'Mounted!')
+    print('Mounted!')
 
     try:
         trio.run(pyfuse3.main)
@@ -59,6 +55,7 @@ def main():
         raise
 
     pyfuse3.close()
+    print('Unmounted filesystem')
 
 
 if __name__ == '__main__':
