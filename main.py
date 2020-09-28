@@ -1,3 +1,7 @@
+'''
+Inspired on the pyfuse3 examples.
+'''
+
 import os
 import sys
 
@@ -20,6 +24,7 @@ class PhotoFS(Operations):
     def __init__(self, library_path):
         super(PhotoFS, self).__init__()
         self.photo_library = PhotoLibrary(library_path)
+        self.__assign_inodes()
 
     def __assign_inodes(self):
         self._inode_to_folder = {ROOT_INODE: self.photo_library.root_folder}
@@ -37,6 +42,10 @@ class PhotoFS(Operations):
                 self._inode_to_asset[inode] = asset
                 self._folder_asset_to_inode[(folder, asset)] = inode
                 inode += 1
+
+        self._inode_to_fd = {}
+        self._fd_to_inode = {}
+        self._fd_to_open_count = {}
 
     async def getattr(self, inode, ctx=None):
         entry = pyfuse3.EntryAttributes()
@@ -132,30 +141,29 @@ class PhotoFS(Operations):
                     return
 
     async def open(self, inode, flags, ctx):
-        if inode != self.hello_inode:
-            raise FUSEError(errno.ENOENT)
-        if flags & os.O_RDWR or flags & os.O_WRONLY:
-            raise FUSEError(errno.EPERM)
-        return pyfuse3.FileInfo(fh=inode)
+        if inode in self._inode_to_fd:
+            fd = self._inode_to_fd[inode]
+            self._fd_to_open_count[fd] += 1
+            return pyfuse3.FileInfo(fh=fd)
+        else:
+            asset = self._inode_to_asset[inode]
+            if not asset:
+                raise FUSEError(errno.ENOENT)
 
-    async def read(self, fh, off, size):
-        assert fh == self.hello_inode
-        return self.hello_data[off:off + size]
+            try:
+                fd = os.open(asset.original_path(self.photo_library.path), flags)
+            except OSError as err:
+                raise FUSEError(err.errno)
 
+            self._inode_to_fd[inode] = fd
+            self._fd_to_inode[fd] = inode
+            self._fd_to_open_count[fd] = 1
 
-def init_logging(debug=False):
-    formatter = logging.Formatter('%(asctime)s.%(msecs)03d %(threadName)s: '
-                                  '[%(name)s] %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-    root_logger = logging.getLogger()
-    if debug:
-        handler.setLevel(logging.DEBUG)
-        root_logger.setLevel(logging.DEBUG)
-    else:
-        handler.setLevel(logging.INFO)
-        root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(handler)
+            return pyfuse3.FileInfo(fh=fd)
+
+    async def read(self, fd, offset, size):
+        os.lseek(fd, offset, os.SEEK_SET)
+        return os.read(fd, size)
 
 
 def parse_args():
@@ -174,7 +182,6 @@ def parse_args():
 
 def main():
     options = parse_args()
-    init_logging(options.debug)
 
     testfs = TestFs()
     fuse_options = set(pyfuse3.default_options)
