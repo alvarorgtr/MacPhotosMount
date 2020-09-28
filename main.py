@@ -41,15 +41,16 @@ class PhotoFS(Operations):
     async def getattr(self, inode, ctx=None):
         entry = pyfuse3.EntryAttributes()
         if inode in self._inode_to_folder:
+            folder = self._inode_to_folder[inode]
+
             # For a folder, we create our own stats
             entry.st_mode = (stat.S_IFDIR | 0o755)
             entry.st_size = 0   # Size of directory is system-defined
 
-            # TODO: read times from the database and use them. For now, just use a hardcoded timestamp.
-            stamp = int(1438467123.985654 * 1e9)
-            entry.st_atime_ns = stamp
-            entry.st_ctime_ns = stamp
-            entry.st_mtime_ns = stamp
+            # TODO: atime is not real
+            entry.st_atime_ns = folder.creation_epoch * 1_000_000_000
+            entry.st_ctime_ns = folder.creation_epoch * 1_000_000_000
+            entry.st_mtime_ns = folder.creation_epoch * 1_000_000_000
 
             entry.st_gid = os.getgid()
             entry.st_uid = os.getuid()
@@ -68,8 +69,13 @@ class PhotoFS(Operations):
             entry.st_mode = (stat.S_IFREG | (0o644 & old_stat.st_mode))
             entry.st_ino = inode
 
-            for attr in ('st_nlink', 'st_uid', 'st_gid', 'st_rdev', 'st_size', 'st_atime_ns', 'st_mtime_ns', 'st_ctime_ns'):
+            for attr in ('st_nlink', 'st_uid', 'st_gid', 'st_rdev', 'st_size'):
                 setattr(entry, attr, getattr(old_stat, attr))
+
+            # TODO: atime is not real
+            entry.st_atime_ns = asset.added_epoch * 1_000_000_000
+            entry.st_ctime_ns = asset.creation_epoch * 1_000_000_000
+            entry.st_mtime_ns = asset.creation_epoch * 1_000_000_000
 
             entry.generation = 0
             entry.entry_timeout = 0
