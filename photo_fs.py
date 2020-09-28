@@ -143,10 +143,8 @@ class PhotoFS(Operations):
 
         logger.debug(f'readdir() called for inode {dir_inode} (folder {folder.name}), offset {offset}, token {token}')
 
-        offset += 1
-
         if folder:
-            for i, subfolder in enumerate(folder.children[offset:], offset):
+            for i, subfolder in enumerate(folder.children[offset:], offset + 1):
                 inode = self._folder_to_inode[subfolder]
                 attr = await self.getattr(inode)
 
@@ -156,7 +154,7 @@ class PhotoFS(Operations):
 
             offset = max(0, offset - len(folder.children))
             assets = folder.sorted_named_assets[offset:]
-            for i, (name, asset) in enumerate(assets, len(folder.children) + offset):
+            for i, (name, asset) in enumerate(assets, len(folder.children) + offset + 1):
                 inode = self._folder_asset_to_inode[(folder, asset)]
                 attr = await self.getattr(inode)
 

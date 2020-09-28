@@ -115,7 +115,7 @@ class Folder:
     def name_assets(self):
         for position, asset in enumerate(sorted(self.assets, key=lambda a: a.creation_epoch)):
             extension = os.path.splitext(asset.file_name)[1]
-            filename = f'{position:05}.{extension}'
+            filename = f'{position:05}{extension}'
             self.named_assets[filename] = asset
 
         self.sorted_named_assets = sorted(self.named_assets.items(), key=lambda item: item[0])

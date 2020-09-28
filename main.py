@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument('mountpoint', type=str,
                         help='Where to mount the file system')
     parser.add_argument('--debug', action='store_true', default=False,
-                        help='Enable FUSE debugging output')
+                        help='Enable debug logging')
     return parser.parse_args()
 
 
@@ -42,8 +42,8 @@ def main():
     fuse_options = set(pyfuse3.default_options)
     fuse_options.add('fsname=PhotoLibrary')
 
-    if options.debug:
-        fuse_options.add('debug')
+    # if options.debug:
+    #    fuse_options.add('debug')
 
     pyfuse3.init(filesystem, options.mountpoint, fuse_options)
 
