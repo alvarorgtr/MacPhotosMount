@@ -65,7 +65,7 @@ class Asset:
     def __init__(self, id, directory, file_name, creation_epoch, added_epoch):
         self.id = id
         self.directory = directory
-        self.file_name = file_name
+        self.file_name = file_name.replace('/', '-') if file_name else None
         self.creation_epoch = creation_epoch
         self.added_epoch = added_epoch
 
@@ -91,7 +91,7 @@ class Folder:
         self.id = id
         self.parent_id = parent_id
         self.parent = None
-        self.name = name
+        self.name = name.replace('/', '-') if name else None
         self.level = level
         self.assets = []
         self.named_assets = {}

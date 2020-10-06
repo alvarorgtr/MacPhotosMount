@@ -20,6 +20,8 @@ def parse_args():
                         help='Where to mount the file system')
     parser.add_argument('--debug', action='store_true', default=False,
                         help='Enable debug logging')
+    parser.add_argument('--fuse-debug', action='store_true', default=False,
+                        help='Enable FUSE debug logging')
     return parser.parse_args()
 
 
@@ -33,8 +35,6 @@ def main():
     log_level = 'DEBUG' if options.debug else 'INFO'
     logging.basicConfig(level=os.environ.get('LOGLEVEL', log_level))
 
-    # Setup the logger
-    logger = logging.getLogger(__name__)
     print(f'Parsed photo library with {len(library.assets)} unique assets')
 
     print(f'Mounting photo library to {options.mountpoint}...')
@@ -43,6 +43,10 @@ def main():
     filesystem = PhotoFS(library)
     fuse_options = set(pyfuse3.default_options)
     fuse_options.add('fsname=PhotoLibrary')
+
+    # Set up fuse debugging if requested
+    if options.fuse_debug:
+        fuse_options.add('debug')
 
     pyfuse3.init(filesystem, options.mountpoint, fuse_options)
 
